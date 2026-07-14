@@ -1,0 +1,52 @@
+[
+  {
+    "id": "1",
+    "database": {
+      "db_id": "nyc_poi",
+      "engine": "PostgreSQL",
+      "engine_version": "18",
+      "extensions": [
+        {
+          "type": "spatial",
+          "name": "postgis"
+        }
+      ]
+    },
+    "question": "Find restaurants within 5 km of Central Park and return the 5 restaurants nearest to The Mount Sinai Hospital. Return their names, locations, and distances to the hospital in meters.",
+    "sql": "WITH anchors AS (SELECT MAX(CASE WHEN name = 'Central Park' THEN geom END) AS central_park_geom, MAX(CASE WHEN name = 'The Mount Sinai Hospital' THEN geom END) AS hospital_geom FROM landmarks) SELECT r.name, ST_AsText(r.geom) AS location, ST_Distance(r.geom::geography, a.hospital_geom::geography) AS distance_to_hospital_m FROM restaurants r CROSS JOIN anchors a WHERE ST_DWithin(r.geom::geography, a.central_park_geom::geography, 5000) ORDER BY r.geom <-> a.hospital_geom LIMIT 5;",
+    "sql_objects": [
+      {
+        "type": "data_type",
+        "value": "geometry"
+      },
+      {
+        "type": "data_type",
+        "value": "geography"
+      },
+      {
+        "type": "function",
+        "value": "ST_DWithin"
+      },
+      {
+        "type": "function",
+        "value": "ST_Distance"
+      },
+      {
+        "type": "function",
+        "value": "ST_AsText"
+      },
+      {
+        "type": "operator",
+        "value": "::"
+      },
+      {
+        "type": "operator",
+        "value": "<->"
+      }
+    ],
+    "object_categories": [
+      "Structured"
+    ],
+    "difficulty": "hard"
+  }
+]

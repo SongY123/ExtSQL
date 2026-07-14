@@ -1,0 +1,438 @@
+[
+  {
+    "id": "objsql_spatial_000001",
+    "database": {
+      "db_id": "nyc_workshop",
+      "engine": "PostgreSQL",
+      "engine_version": "18",
+      "extensions": [
+        {
+          "type": "spatial",
+          "name": "postgis"
+        }
+      ]
+    },
+    "question": "Return the IDs and names of the first five subway stations by ID, together with each geometry's PostGIS type, SRID, and WKT representation.",
+    "sql": "SELECT gid, name, ST_GeometryType(geom) AS geometry_type, ST_SRID(geom) AS srid, ST_AsText(geom) AS location_wkt FROM nyc_subway_stations ORDER BY gid LIMIT 5;",
+    "sql_objects": [
+      {
+        "type": "data_type",
+        "value": "geometry"
+      },
+      {
+        "type": "function",
+        "value": "ST_GeometryType"
+      },
+      {
+        "type": "function",
+        "value": "ST_SRID"
+      },
+      {
+        "type": "function",
+        "value": "ST_AsText"
+      }
+    ],
+    "object_categories": [
+      "Structured"
+    ],
+    "difficulty": ""
+  },
+  {
+    "id": "objsql_spatial_000002",
+    "database": {
+      "db_id": "nyc_workshop",
+      "engine": "PostgreSQL",
+      "engine_version": "18",
+      "extensions": [
+        {
+          "type": "spatial",
+          "name": "postgis"
+        }
+      ]
+    },
+    "question": "Using projected coordinate (583500, 4507000) in EPSG:26918 as an anchor, return the IDs, names, and distances in meters rounded to two decimal places of the five nearest subway stations within 750 meters, ordered nearest first.",
+    "sql": "WITH anchor AS (SELECT ST_SetSRID(ST_MakePoint(583500, 4507000), 26918) AS geom) SELECT s.gid, s.name, ROUND(CAST(ST_Distance(s.geom, a.geom) AS numeric), 2) AS distance_m FROM nyc_subway_stations AS s CROSS JOIN anchor AS a WHERE ST_DWithin(s.geom, a.geom, 750) ORDER BY s.geom <-> a.geom, s.gid LIMIT 5;",
+    "sql_objects": [
+      {
+        "type": "data_type",
+        "value": "geometry"
+      },
+      {
+        "type": "function",
+        "value": "ST_MakePoint"
+      },
+      {
+        "type": "function",
+        "value": "ST_SetSRID"
+      },
+      {
+        "type": "function",
+        "value": "ST_DWithin"
+      },
+      {
+        "type": "function",
+        "value": "ST_Distance"
+      },
+      {
+        "type": "operator",
+        "value": "<->"
+      }
+    ],
+    "object_categories": [
+      "Structured"
+    ],
+    "difficulty": ""
+  },
+  {
+    "id": "objsql_spatial_000003",
+    "database": {
+      "db_id": "nyc_workshop",
+      "engine": "PostgreSQL",
+      "engine_version": "18",
+      "extensions": [
+        {
+          "type": "spatial",
+          "name": "postgis"
+        }
+      ]
+    },
+    "question": "For the EPSG:26918 study-area polygon WKT POLYGON((583000 4506500,584000 4506500,584000 4507500,583000 4507500,583000 4506500)), return the IDs and names of up to ten subway stations whose points are within the polygon, ordered by station ID.",
+    "sql": "WITH study_area AS (SELECT ST_GeomFromText('POLYGON((583000 4506500,584000 4506500,584000 4507500,583000 4507500,583000 4506500))', 26918) AS geom) SELECT s.gid, s.name FROM nyc_subway_stations AS s CROSS JOIN study_area AS a WHERE ST_Within(s.geom, a.geom) ORDER BY s.gid LIMIT 10;",
+    "sql_objects": [
+      {
+        "type": "data_type",
+        "value": "geometry"
+      },
+      {
+        "type": "function",
+        "value": "ST_GeomFromText"
+      },
+      {
+        "type": "function",
+        "value": "ST_Within"
+      }
+    ],
+    "object_categories": [
+      "Structured"
+    ],
+    "difficulty": ""
+  },
+  {
+    "id": "objsql_spatial_000004",
+    "database": {
+      "db_id": "nyc_workshop",
+      "engine": "PostgreSQL",
+      "engine_version": "18",
+      "extensions": [
+        {
+          "type": "spatial",
+          "name": "postgis"
+        }
+      ]
+    },
+    "question": "Using longitude/latitude (-73.9857, 40.7484) in EPSG:4326 as a geographic anchor, return the IDs, names, WKT locations, and spheroidal distances in meters rounded to two decimal places of the five subway stations within 1,000 meters that come first in PostGIS geography nearest-neighbor order.",
+    "sql": "WITH anchor AS (SELECT ST_GeogFromText('SRID=4326;POINT(-73.9857 40.7484)') AS geog) SELECT s.gid, s.name, ST_AsText(s.geog::geometry) AS location_wkt, ROUND(CAST(ST_Distance(s.geog, a.geog) AS numeric), 2) AS distance_m FROM nyc_subway_stations_geog AS s CROSS JOIN anchor AS a WHERE ST_DWithin(s.geog, a.geog, 1000) ORDER BY s.geog <-> a.geog, s.gid LIMIT 5;",
+    "sql_objects": [
+      {
+        "type": "data_type",
+        "value": "geography"
+      },
+      {
+        "type": "data_type",
+        "value": "geometry"
+      },
+      {
+        "type": "function",
+        "value": "ST_GeogFromText"
+      },
+      {
+        "type": "function",
+        "value": "ST_AsText"
+      },
+      {
+        "type": "function",
+        "value": "ST_DWithin"
+      },
+      {
+        "type": "function",
+        "value": "ST_Distance"
+      },
+      {
+        "type": "operator",
+        "value": "::"
+      },
+      {
+        "type": "operator",
+        "value": "<->"
+      }
+    ],
+    "object_categories": [
+      "Structured"
+    ],
+    "difficulty": ""
+  },
+  {
+    "id": "objsql_spatial_000005",
+    "database": {
+      "db_id": "nyc_workshop",
+      "engine": "PostgreSQL",
+      "engine_version": "18",
+      "extensions": [
+        {
+          "type": "spatial",
+          "name": "postgis"
+        }
+      ]
+    },
+    "question": "Return every neighborhood with an invalid geometry, including its ID, name, borough, validity flag, validity reason, and whether applying the PostGIS repair function produces a valid geometry. Order by neighborhood ID.",
+    "sql": "SELECT gid, name, boroname AS borough, ST_IsValid(geom, 0) AS is_valid, ST_IsValidReason(geom) AS validity_reason, ST_IsValid(ST_MakeValid(geom), 0) AS repaired_is_valid FROM nyc_neighborhoods WHERE NOT ST_IsValid(geom, 0) ORDER BY gid;",
+    "sql_objects": [
+      {
+        "type": "data_type",
+        "value": "geometry"
+      },
+      {
+        "type": "function",
+        "value": "ST_IsValid"
+      },
+      {
+        "type": "function",
+        "value": "ST_IsValidReason"
+      },
+      {
+        "type": "function",
+        "value": "ST_MakeValid"
+      }
+    ],
+    "object_categories": [
+      "Structured"
+    ],
+    "difficulty": ""
+  },
+  {
+    "id": "objsql_spatial_000006",
+    "database": {
+      "db_id": "nyc_workshop",
+      "engine": "PostgreSQL",
+      "engine_version": "18",
+      "extensions": [
+        {
+          "type": "spatial",
+          "name": "postgis"
+        }
+      ]
+    },
+    "question": "For up to the first ten subway stations covered by the Bensonhurst neighborhood in Brooklyn, return each station's ID and name plus boolean flags showing whether the neighborhood contains the station, the station is within the neighborhood, and the neighborhood covers the station. Order by station ID.",
+    "sql": "WITH target AS (SELECT geom FROM nyc_neighborhoods WHERE name = 'Bensonhurst' AND boroname = 'Brooklyn') SELECT s.gid, s.name, ST_Contains(t.geom, s.geom) AS neighborhood_contains_station, ST_Within(s.geom, t.geom) AS station_within_neighborhood, ST_Covers(t.geom, s.geom) AS neighborhood_covers_station FROM target AS t JOIN nyc_subway_stations AS s ON ST_Covers(t.geom, s.geom) ORDER BY s.gid LIMIT 10;",
+    "sql_objects": [
+      {
+        "type": "data_type",
+        "value": "geometry"
+      },
+      {
+        "type": "function",
+        "value": "ST_Contains"
+      },
+      {
+        "type": "function",
+        "value": "ST_Within"
+      },
+      {
+        "type": "function",
+        "value": "ST_Covers"
+      }
+    ],
+    "object_categories": [
+      "Structured"
+    ],
+    "difficulty": ""
+  },
+  {
+    "id": "objsql_spatial_000007",
+    "database": {
+      "db_id": "nyc_workshop",
+      "engine": "PostgreSQL",
+      "engine_version": "18",
+      "extensions": [
+        {
+          "type": "spatial",
+          "name": "postgis"
+        }
+      ]
+    },
+    "question": "Among named streets whose bounding boxes overlap the Central Park neighborhood in Manhattan, return the first ten street IDs and names whose geometries cross the neighborhood, together with an exact intersection flag. Order by street ID.",
+    "sql": "WITH target AS (SELECT geom FROM nyc_neighborhoods WHERE name = 'Central Park' AND boroname = 'Manhattan') SELECT s.gid, s.name, ST_Intersects(s.geom, t.geom) AS intersects_neighborhood FROM nyc_streets AS s CROSS JOIN target AS t WHERE s.name IS NOT NULL AND s.geom && t.geom AND ST_Crosses(s.geom, t.geom) ORDER BY s.gid LIMIT 10;",
+    "sql_objects": [
+      {
+        "type": "data_type",
+        "value": "geometry"
+      },
+      {
+        "type": "function",
+        "value": "ST_Intersects"
+      },
+      {
+        "type": "function",
+        "value": "ST_Crosses"
+      },
+      {
+        "type": "operator",
+        "value": "&&"
+      }
+    ],
+    "object_categories": [
+      "Structured"
+    ],
+    "difficulty": ""
+  },
+  {
+    "id": "objsql_spatial_000008",
+    "database": {
+      "db_id": "nyc_workshop",
+      "engine": "PostgreSQL",
+      "engine_version": "18",
+      "extensions": [
+        {
+          "type": "spatial",
+          "name": "postgis"
+        }
+      ]
+    },
+    "question": "After repairing invalid neighborhood geometries for this calculation, return the first ten unordered pairs of neighborhoods whose bounding boxes overlap and whose boundaries touch. Return both neighborhood IDs, names, and boroughs, ordered by the two IDs.",
+    "sql": "WITH repaired AS (SELECT gid, name, boroname, ST_MakeValid(geom) AS geom FROM nyc_neighborhoods) SELECT a.gid AS neighborhood_a_id, a.name AS neighborhood_a_name, a.boroname AS neighborhood_a_borough, b.gid AS neighborhood_b_id, b.name AS neighborhood_b_name, b.boroname AS neighborhood_b_borough FROM repaired AS a JOIN repaired AS b ON a.gid < b.gid AND a.geom && b.geom AND ST_Touches(a.geom, b.geom) ORDER BY a.gid, b.gid LIMIT 10;",
+    "sql_objects": [
+      {
+        "type": "data_type",
+        "value": "geometry"
+      },
+      {
+        "type": "function",
+        "value": "ST_MakeValid"
+      },
+      {
+        "type": "function",
+        "value": "ST_Touches"
+      },
+      {
+        "type": "operator",
+        "value": "&&"
+      }
+    ],
+    "object_categories": [
+      "Structured"
+    ],
+    "difficulty": ""
+  },
+  {
+    "id": "objsql_spatial_000009",
+    "database": {
+      "db_id": "nyc_workshop",
+      "engine": "PostgreSQL",
+      "engine_version": "18",
+      "extensions": [
+        {
+          "type": "spatial",
+          "name": "postgis"
+        }
+      ]
+    },
+    "question": "After repairing neighborhood geometries, return the five largest neighborhoods by planar area. Return each ID, name, borough, area in square meters and perimeter in meters rounded to two decimal places, and EPSG:4326 GeoJSON for both its centroid and a representative point guaranteed to lie on the surface. Break area ties by neighborhood ID.",
+    "sql": "WITH prepared AS (SELECT gid, name, boroname, ST_MakeValid(geom) AS geom FROM nyc_neighborhoods) SELECT gid, name, boroname AS borough, ROUND(CAST(ST_Area(geom) AS numeric), 2) AS area_sq_m, ROUND(CAST(ST_Perimeter(geom) AS numeric), 2) AS perimeter_m, ST_AsGeoJSON(ST_Transform(ST_Centroid(geom), 4326), 6) AS centroid_geojson, ST_AsGeoJSON(ST_Transform(ST_PointOnSurface(geom), 4326), 6) AS point_on_surface_geojson FROM prepared ORDER BY ST_Area(geom) DESC, gid LIMIT 5;",
+    "sql_objects": [
+      {
+        "type": "data_type",
+        "value": "geometry"
+      },
+      {
+        "type": "function",
+        "value": "ST_MakeValid"
+      },
+      {
+        "type": "function",
+        "value": "ST_Area"
+      },
+      {
+        "type": "function",
+        "value": "ST_Perimeter"
+      },
+      {
+        "type": "function",
+        "value": "ST_Centroid"
+      },
+      {
+        "type": "function",
+        "value": "ST_PointOnSurface"
+      },
+      {
+        "type": "function",
+        "value": "ST_Transform"
+      },
+      {
+        "type": "function",
+        "value": "ST_AsGeoJSON"
+      }
+    ],
+    "object_categories": [
+      "Structured"
+    ],
+    "difficulty": ""
+  },
+  {
+    "id": "objsql_spatial_000010",
+    "database": {
+      "db_id": "nyc_workshop",
+      "engine": "PostgreSQL",
+      "engine_version": "18",
+      "extensions": [
+        {
+          "type": "spatial",
+          "name": "postgis"
+        }
+      ]
+    },
+    "question": "For the Cortlandt St subway station with ID 1, create a 100-meter planar buffer. Among named streets intersecting that buffer, return the five nearest streets in PostGIS nearest-neighbor order, including street ID, name, planar distance to the station in meters and length clipped to the buffer in meters rounded to two decimal places, and WKT of the closest point on the street to the station. Break ties by street ID.",
+    "sql": "WITH anchor AS (SELECT geom FROM nyc_subway_stations WHERE gid = 1), service_area AS (SELECT geom AS station_geom, ST_Buffer(geom, 100) AS buffer_geom FROM anchor), candidates AS (SELECT s.gid, s.name, s.geom AS street_geom, a.station_geom, a.buffer_geom FROM nyc_streets AS s CROSS JOIN service_area AS a WHERE s.name IS NOT NULL AND ST_Intersects(s.geom, a.buffer_geom)) SELECT gid, name, ROUND(CAST(ST_Distance(street_geom, station_geom) AS numeric), 2) AS distance_m, ROUND(CAST(ST_Length(ST_Intersection(street_geom, buffer_geom)) AS numeric), 2) AS length_inside_buffer_m, ST_AsText(ST_ClosestPoint(street_geom, station_geom)) AS closest_point_wkt FROM candidates ORDER BY street_geom <-> station_geom, gid LIMIT 5;",
+    "sql_objects": [
+      {
+        "type": "data_type",
+        "value": "geometry"
+      },
+      {
+        "type": "function",
+        "value": "ST_Buffer"
+      },
+      {
+        "type": "function",
+        "value": "ST_Intersects"
+      },
+      {
+        "type": "function",
+        "value": "ST_Distance"
+      },
+      {
+        "type": "function",
+        "value": "ST_Intersection"
+      },
+      {
+        "type": "function",
+        "value": "ST_Length"
+      },
+      {
+        "type": "function",
+        "value": "ST_ClosestPoint"
+      },
+      {
+        "type": "function",
+        "value": "ST_AsText"
+      },
+      {
+        "type": "operator",
+        "value": "<->"
+      }
+    ],
+    "object_categories": [
+      "Structured"
+    ],
+    "difficulty": ""
+  }
+]

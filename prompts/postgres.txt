@@ -1,0 +1,8 @@
+You are a PostgreSQL expert. You need to read and understand the following [Database Schema] description and use valid PostgreSQL knowledge to generate SQL for answering the[Question].
+[Database Schema]
+{db_schema}
+
+[Question]
+{question}
+
+```sql

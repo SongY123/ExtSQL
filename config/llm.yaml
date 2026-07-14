@@ -1,0 +1,7 @@
+provider: openai_compatible
+model: gemma-4-31B-it
+base_url: http://10.132.80.118:8999/v1
+api_key_env: EMPTY
+temperature: 0
+max_tokens: 8192
+timeout: 120

@@ -1,0 +1,8 @@
+type: postgresql
+host: localhost
+port: 5432
+database: postgis_db
+user: postgres
+password: postgres
+connect_timeout: 10
+statement_timeout: 60

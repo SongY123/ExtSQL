@@ -218,6 +218,8 @@ __marimo__/
 .streamlit/secrets.toml
 
 data/
+results/
+extsql_bench/experiments/
 
 .idea/
 .DS_Store

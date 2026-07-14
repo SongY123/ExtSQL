@@ -1,0 +1,11 @@
+You are a PostgreSQL expert. You need to read and understand the following [Database Schema] description and the provided [Oracle Function and Operator] information, and use valid PostgreSQL knowledge to generate SQL for answering the[Question].
+[Database Schema]
+{db_schema}
+
+[Oracle Function and Operator]
+{oracle_function_and_operator}
+
+[Question]
+{question}
+
+```sql

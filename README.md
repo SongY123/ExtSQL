@@ -63,22 +63,69 @@ provided, inference reads the schema from `postgis_db` through PostgreSQL. The
 row's `database.db_id` is used as the schema name; for
 `dataset/pilot_annotations.json` this is `nyc_workshop`.
 
-Run PostgreSQL execution evaluation:
+Run PostgreSQL execution evaluation. The optional first argument selects
+`ex`, `ves`, or `all`; if omitted, it defaults to `all`:
 
 ```bash
-bash scripts/evaluate.sh \
+bash scripts/evaluate.sh all \
   --input dataset/pilot_annotations.json \
   --predictions results/predictions.json \
-  --ves-repeats 3 \
   --details-output results/eval_details.json
 ```
+
+Evaluate only one metric:
+
+```bash
+# EX only (does not run the repeated VES timing loop)
+bash scripts/evaluate.sh ex \
+  --input dataset/pilot_annotations.json \
+  --predictions results/predictions.json
+
+# VES only
+bash scripts/evaluate.sh ves \
+  --input dataset/pilot_annotations.json \
+  --predictions results/predictions.json \
+  --ves-repeats 10
+```
+
+The equivalent Python option is `--metric {ex,ves,all}`. The shell script also
+accepts this option directly; the positional form above is provided for
+convenience.
 
 `evaluate.sh` passes `config/database.yaml` to the Python evaluator. A custom
 database config can be selected with `--db-config /path/to/database.yaml`.
 
 Database settings are defined in `config/database.yaml`; LLM settings are
 defined in `config/llm.yaml`. During evaluation each row's `database.db_id`
-becomes the active PostgreSQL schema before its SQL runs.
+becomes the active PostgreSQL schema before its SQL runs. Every evaluation
+connection executes `SET search_path TO "<db_id>", "public"`, so the current
+schema always takes precedence and `public` remains the fallback.
+
+The metric implementation follows BIRD's official `evaluation.py` and
+`evaluation_ves.py`:
+
+- **EX** compares `set(predicted_rows) == set(gold_rows)`. Row order and
+  duplicate rows are ignored, while column order is preserved. A SQL execution
+  error or timeout scores 0.
+- **VES** first applies the same EX check. Correct samples are timed in paired
+  order (`predicted`, then `gold`) for every repetition. Each repetition
+  produces `gold_time / predicted_time`; ratios outside the strict
+  `mean ± 3 * population_standard_deviation` interval are removed. The
+  per-sample score is `sqrt(mean(filtered_ratios)) * 100`; incorrect, timed-out,
+  or failed samples score 0. Dataset VES is the mean of per-sample scores over
+  all samples, including zeros.
+
+`--ves-repeats` defaults to 10 and is used only by `ves` and `all`. Set it to
+100 when reproducing BIRD's original repetition count.
+Timing measures SQL execution itself, excluding connection setup, schema setup,
+and result fetching. `connect_timeout` and the per-query
+`statement_timeout` (seconds) remain configurable in `config/database.yaml`.
+The details output records raw and filtered timing ratios as
+`ves_raw_ratios` and `ves_filtered_ratios` for auditing. The official BIRD EX
+result is stored as `ex_bird`; the obsolete custom `ex` field is not emitted.
+For VES, every repeated predicted and gold SQL execution time is recorded in
+`pred_time_secs` and `gold_time_secs`. Their arithmetic means are retained in
+`pred_time_sec` and `gold_time_sec`.
 
 The prediction file format is:
 
@@ -91,4 +138,6 @@ The prediction file format is:
 ]
 ```
 
-The evaluator connects to PostgreSQL, executes predicted SQL and gold SQL from the input JSON, compares execution results, and prints EX/VES metrics by `difficulty` plus the overall `all` metrics.
+The evaluator connects to PostgreSQL, executes predicted SQL and gold SQL from
+the input JSON, and prints the selected metrics by `difficulty` plus the
+overall `all` row.

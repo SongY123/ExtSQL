@@ -27,10 +27,7 @@ from common.data import (  # noqa: E402
     write_records,
 )
 from evaluate.postgres import ExecutionResult, PostgresConfig, execute_sql  # noqa: E402
-from evaluate.result_match import calculate_ex  # noqa: E402
-
-
-EPS = 1e-9
+from evaluate.result_match import calculate_ex_bird  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -41,7 +38,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--predictions", required=True, help="Prediction JSON/JSONL with id and SQL.")
     parser.add_argument("--details-output", default="", help="Optional JSON path for per-sample details.")
     parser.add_argument("--db-config", required=True, help="Database YAML/JSON config path.")
-    parser.add_argument("--ves-repeats", type=int, default=1, help="Median timing repeats per SQL.")
+    parser.add_argument(
+        "--metric",
+        choices=("ex", "ves", "all"),
+        default="all",
+        help="Metric to evaluate. Defaults to all (EX and VES).",
+    )
+    parser.add_argument(
+        "--ves-repeats",
+        type=int,
+        default=10,
+        help="Paired predicted/gold timing runs for VES. Defaults to 10.",
+    )
     parser.add_argument("--skip-missing", action="store_true", help="Skip samples without a prediction.")
     return parser.parse_args()
 
@@ -69,13 +77,19 @@ def main() -> None:
             row_index=index,
             config=config,
             repeats=max(1, args.ves_repeats),
+            metric=args.metric,
         )
         details.append(detail)
+        metric_values = []
+        if args.metric in {"ex", "all"}:
+            metric_values.append(f"ex_bird={detail['ex_bird']}")
+        if args.metric in {"ves", "all"}:
+            metric_values.append(f"ves={detail['ves']:.2f}")
         print(
             "[eval] "
             f"{len(details)}/{len(gold_rows)} "
             f"id={current_id} difficulty={detail['difficulty']} "
-            f"ex={detail['ex']} ves={detail['ves']:.2f} "
+            f"{' '.join(metric_values)} "
             f"status={detail['status']}",
             file=sys.stderr,
         )
@@ -83,7 +97,7 @@ def main() -> None:
     if args.details_output:
         write_records(args.details_output, details)
 
-    _print_metrics(details)
+    _print_metrics(details, args.metric)
 
 
 def _evaluate_one(
@@ -93,6 +107,7 @@ def _evaluate_one(
     row_index: int,
     config: PostgresConfig,
     repeats: int,
+    metric: str,
 ) -> dict[str, Any]:
     current_id = sample_id(row, row_index)
     target_sql = gold_sql(row)
@@ -103,11 +118,15 @@ def _evaluate_one(
         "difficulty": difficulty(row),
         "gold_sql": target_sql,
         "pred_sql": generated_sql,
-        "ex": 0,
         "ex_bird": 0,
         "ves": 0.0,
+        "ves_time_ratio": 0.0,
+        "ves_raw_ratios": [],
+        "ves_filtered_ratios": [],
         "gold_time_sec": None,
         "pred_time_sec": None,
+        "gold_time_secs": [],
+        "pred_time_secs": [],
         "status": "wrong",
         "error_type": "",
         "error_message": "",
@@ -129,73 +148,127 @@ def _evaluate_one(
         )
         return base_detail
 
-    pred_execs, gold_execs = _execute_repeated(generated_sql, target_sql, config, repeats)
-    pred_first = pred_execs[0] if pred_execs else None
-    gold_first = gold_execs[0] if gold_execs else None
-
-    if pred_first is None or pred_first.status != "ok":
-        error = pred_first or ExecutionResult("execution_error", [], 0.0, "Prediction did not execute.")
+    pred_result = execute_sql(generated_sql, config)
+    if pred_result.status != "ok":
         base_detail.update(
             status="pred_execution_error",
-            error_type=error.status,
-            error_message=error.error,
-            pred_time_sec=error.elapsed_sec,
+            error_type=pred_result.status,
+            error_message=pred_result.error,
         )
         return base_detail
 
-    if gold_first is None or gold_first.status != "ok":
-        error = gold_first or ExecutionResult("execution_error", [], 0.0, "Gold SQL did not execute.")
+    gold_result = execute_sql(target_sql, config)
+    if gold_result.status != "ok":
         base_detail.update(
             status="gold_execution_error",
-            error_type=error.status,
-            error_message=error.error,
-            pred_time_sec=_median_time(pred_execs),
-            gold_time_sec=error.elapsed_sec,
+            error_type=gold_result.status,
+            error_message=gold_result.error,
         )
         return base_detail
 
-    ex_eq, ex_bird = calculate_ex(pred_first.rows, gold_first.rows)
-    pred_time = _median_time(pred_execs)
-    gold_time = _median_time(gold_execs)
-    ves = math.sqrt(max(gold_time, EPS) / max(pred_time, EPS)) * 100.0 if ex_eq else 0.0
+    ex_bird = calculate_ex_bird(pred_result.rows, gold_result.rows)
     base_detail.update(
-        ex=ex_eq,
         ex_bird=ex_bird,
+        status="correct" if ex_bird else "result_mismatch",
+        pred_result_count=len(pred_result.rows),
+        gold_result_count=len(gold_result.rows),
+    )
+
+    if metric not in {"ves", "all"} or not ex_bird:
+        return base_detail
+
+    pred_times, gold_times, timing_error = _execute_ves_repeated(
+        generated_sql,
+        target_sql,
+        config,
+        repeats,
+    )
+    if timing_error is not None:
+        side, error = timing_error
+        base_detail.update(
+            status=f"{side}_timing_error",
+            error_type=error.status,
+            error_message=error.error,
+            pred_time_sec=_mean_or_none(pred_times),
+            gold_time_sec=_mean_or_none(gold_times),
+            pred_time_secs=pred_times,
+            gold_time_secs=gold_times,
+        )
+        return base_detail
+
+    ves, time_ratio, raw_ratios, filtered_ratios = compute_ves_score(
+        pred_times,
+        gold_times,
+    )
+    base_detail.update(
         ves=ves,
-        gold_time_sec=gold_time,
-        pred_time_sec=pred_time,
-        status="correct" if ex_eq else "result_mismatch",
-        pred_result_count=len(pred_first.rows),
-        gold_result_count=len(gold_first.rows),
+        ves_time_ratio=time_ratio,
+        ves_raw_ratios=raw_ratios,
+        ves_filtered_ratios=filtered_ratios,
+        pred_time_sec=_mean_or_none(pred_times),
+        gold_time_sec=_mean_or_none(gold_times),
+        pred_time_secs=pred_times,
+        gold_time_secs=gold_times,
     )
     return base_detail
 
 
-def _execute_repeated(
+def _execute_ves_repeated(
     pred_sql: str,
     target_sql: str,
     config: PostgresConfig,
     repeats: int,
-) -> tuple[list[ExecutionResult], list[ExecutionResult]]:
-    pred_execs: list[ExecutionResult] = []
-    gold_execs: list[ExecutionResult] = []
+) -> tuple[list[float], list[float], tuple[str, ExecutionResult] | None]:
+    pred_times: list[float] = []
+    gold_times: list[float] = []
     for _ in range(repeats):
-        pred_result = execute_sql(pred_sql, config)
-        pred_execs.append(pred_result)
+        pred_result = execute_sql(pred_sql, config, fetch_rows=False)
         if pred_result.status != "ok":
-            break
-        gold_result = execute_sql(target_sql, config)
-        gold_execs.append(gold_result)
+            return pred_times, gold_times, ("pred", pred_result)
+        pred_times.append(pred_result.elapsed_sec)
+
+        gold_result = execute_sql(target_sql, config, fetch_rows=False)
         if gold_result.status != "ok":
-            break
-    return pred_execs, gold_execs
+            return pred_times, gold_times, ("gold", gold_result)
+        gold_times.append(gold_result.elapsed_sec)
+    return pred_times, gold_times, None
 
 
-def _median_time(results: list[ExecutionResult]) -> float:
-    ok_times = [item.elapsed_sec for item in results if item.status == "ok"]
-    if not ok_times:
-        return 0.0
-    return float(statistics.median(ok_times))
+def clean_abnormal(values: list[float]) -> list[float]:
+    """Apply BIRD's strict mean ± 3 population-standard-deviation filter."""
+
+    if not values:
+        return []
+    mean = statistics.fmean(values)
+    std = statistics.pstdev(values)
+    lower = mean - 3 * std
+    upper = mean + 3 * std
+    return [value for value in values if lower < value < upper]
+
+
+def compute_ves_score(
+    pred_times: list[float],
+    gold_times: list[float],
+) -> tuple[float, float, list[float], list[float]]:
+    """Compute BIRD VES from paired timing ratios."""
+
+    if len(pred_times) != len(gold_times):
+        raise ValueError("Predicted and gold timing lists must have equal length.")
+    if not pred_times or any(value <= 0 for value in pred_times):
+        return 0.0, 0.0, [], []
+
+    raw_ratios = [gold / predicted for predicted, gold in zip(pred_times, gold_times)]
+    filtered_ratios = clean_abnormal(raw_ratios)
+    if not filtered_ratios:
+        return 0.0, 0.0, raw_ratios, []
+
+    time_ratio = statistics.fmean(filtered_ratios)
+    ves = math.sqrt(time_ratio) * 100.0
+    return ves, time_ratio, raw_ratios, filtered_ratios
+
+
+def _mean_or_none(values: list[float]) -> float | None:
+    return statistics.fmean(values) if values else None
 
 
 def _resolve_db_config(
@@ -210,7 +283,7 @@ def _resolve_db_config(
         database=settings.database,
         connect_timeout=settings.connect_timeout,
         statement_timeout_ms=int(settings.statement_timeout * 1000),
-        search_path=settings.search_path or _default_search_path(row),
+        search_path=_default_search_path(row),
     )
 
 
@@ -219,7 +292,7 @@ def _default_search_path(row: Mapping[str, Any]) -> str:
     return f"{schema},public" if schema else "public"
 
 
-def _print_metrics(details: list[dict[str, Any]]) -> None:
+def _print_metrics(details: list[dict[str, Any]], metric: str) -> None:
     if not details:
         print("No evaluated samples.")
         return
@@ -233,17 +306,31 @@ def _print_metrics(details: list[dict[str, Any]]) -> None:
     ordered_keys.extend(sorted(key for key in groups if key not in set(ordered_keys)))
 
     print("\nEvaluation metrics")
-    print(f"{'difficulty':<14} {'count':>7} {'EX':>10} {'VES':>10}")
+    if metric == "ex":
+        print(f"{'difficulty':<14} {'count':>7} {'EX':>10}")
+    elif metric == "ves":
+        print(f"{'difficulty':<14} {'count':>7} {'VES':>10}")
+    else:
+        print(f"{'difficulty':<14} {'count':>7} {'EX':>10} {'VES':>10}")
     for key in ordered_keys:
-        _print_metric_row(key, groups[key])
-    _print_metric_row("all", details)
+        _print_metric_row(key, groups[key], metric)
+    _print_metric_row("all", details, metric)
 
 
-def _print_metric_row(name: str, rows: list[dict[str, Any]]) -> None:
+def _print_metric_row(name: str, rows: list[dict[str, Any]], metric: str) -> None:
     count = len(rows)
-    ex = sum(int(item.get("ex") or 0) for item in rows) / count * 100.0 if count else 0.0
+    ex_bird = (
+        sum(int(item.get("ex_bird") or 0) for item in rows) / count * 100.0
+        if count
+        else 0.0
+    )
     ves = sum(float(item.get("ves") or 0.0) for item in rows) / count if count else 0.0
-    print(f"{name:<14} {count:>7} {ex:>9.2f}% {ves:>9.2f}")
+    if metric == "ex":
+        print(f"{name:<14} {count:>7} {ex_bird:>9.2f}%")
+    elif metric == "ves":
+        print(f"{name:<14} {count:>7} {ves:>9.2f}")
+    else:
+        print(f"{name:<14} {count:>7} {ex_bird:>9.2f}% {ves:>9.2f}")
 
 
 if __name__ == "__main__":

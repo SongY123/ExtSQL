@@ -28,7 +28,12 @@ class ExecutionResult:
     error_type: str = ""
 
 
-def execute_sql(sql_text: str, config: PostgresConfig) -> ExecutionResult:
+def execute_sql(
+    sql_text: str,
+    config: PostgresConfig,
+    *,
+    fetch_rows: bool = True,
+) -> ExecutionResult:
     if not sql_text or not sql_text.strip():
         return ExecutionResult(
             status="empty_sql",
@@ -47,7 +52,8 @@ def execute_sql(sql_text: str, config: PostgresConfig) -> ExecutionResult:
 
     conn = None
     cursor = None
-    started = time.perf_counter()
+    request_started = time.perf_counter()
+    execution_started: float | None = None
     try:
         conn = psycopg2.connect(
             host=config.host,
@@ -62,11 +68,13 @@ def execute_sql(sql_text: str, config: PostgresConfig) -> ExecutionResult:
         cursor = conn.cursor()
         if config.search_path:
             cursor.execute(_set_search_path_sql(config.search_path))
+        execution_started = time.perf_counter()
         cursor.execute(sql_text)
-        rows = cursor.fetchall() if cursor.description is not None else []
-        elapsed = time.perf_counter() - started
+        elapsed = time.perf_counter() - execution_started
+        rows = cursor.fetchall() if fetch_rows and cursor.description is not None else []
         return ExecutionResult(status="ok", rows=list(rows), elapsed_sec=elapsed)
     except Exception as exc:  # noqa: BLE001 - preserve DB driver error text
+        started = execution_started if execution_started is not None else request_started
         elapsed = time.perf_counter() - started
         return ExecutionResult(
             status=_classify_error(exc),

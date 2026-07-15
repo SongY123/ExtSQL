@@ -25,6 +25,29 @@ bash scripts/inference.sh \
   --output results/predictions.json
 ```
 
+Each prediction record includes the generated SQL plus inference measurements:
+
+```json
+{
+  "id": "1",
+  "sql": "SELECT 1;",
+  "difficulty": "easy",
+  "input_tokens": 1200,
+  "output_tokens": 80,
+  "total_tokens": 1280,
+  "inference_time_ms": 1534.27
+}
+```
+
+`input_tokens`, `output_tokens`, and `total_tokens` come from the
+OpenAI-compatible response `usage` object. If the backend does not return
+usage, these fields are `null` rather than estimated. `total_tokens` is
+calculated as input plus output tokens when both values are available.
+`inference_time_ms` measures from the first API request until the complete
+response is received, including retry delays when retries occur. After all
+rows finish, inference prints average input, output, and total tokens plus
+average inference time grouped by `difficulty` and for `all` rows.
+
 The script passes `config/llm.yaml` and `config/database.yaml` to Python. It
 does not parse model or database settings in shell. To use other files, pass
 their paths as trailing overrides:
@@ -99,7 +122,9 @@ Database settings are defined in `config/database.yaml`; LLM settings are
 defined in `config/llm.yaml`. During evaluation each row's `database.db_id`
 becomes the active PostgreSQL schema before its SQL runs. Every evaluation
 connection executes `SET search_path TO "<db_id>", "public"`, so the current
-schema always takes precedence and `public` remains the fallback.
+schema always takes precedence and `public` remains the fallback. When
+`db_id` is already `public`, the evaluator sets only `search_path TO public`
+and does not add it twice.
 
 The metric implementation follows BIRD's official `evaluation.py` and
 `evaluation_ves.py`:
@@ -122,7 +147,8 @@ and result fetching. `connect_timeout` and the per-query
 `statement_timeout` (seconds) remain configurable in `config/database.yaml`.
 The details output records raw and filtered timing ratios as
 `ves_raw_ratios` and `ves_filtered_ratios` for auditing. The official BIRD EX
-result is stored as `ex_bird`; the obsolete custom `ex` field is not emitted.
+result is stored as `ex`; only the field name is simplified, while the BIRD
+evaluation logic remains unchanged.
 For VES, every repeated predicted and gold SQL execution time is recorded in
 `pred_time_secs` and `gold_time_secs`. Their arithmetic means are retained in
 `pred_time_sec` and `gold_time_sec`.

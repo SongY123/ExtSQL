@@ -82,7 +82,7 @@ def main() -> None:
         details.append(detail)
         metric_values = []
         if args.metric in {"ex", "all"}:
-            metric_values.append(f"ex_bird={detail['ex_bird']}")
+            metric_values.append(f"ex={detail['ex']}")
         if args.metric in {"ves", "all"}:
             metric_values.append(f"ves={detail['ves']:.2f}")
         print(
@@ -118,7 +118,7 @@ def _evaluate_one(
         "difficulty": difficulty(row),
         "gold_sql": target_sql,
         "pred_sql": generated_sql,
-        "ex_bird": 0,
+        "ex": 0,
         "ves": 0.0,
         "ves_time_ratio": 0.0,
         "ves_raw_ratios": [],
@@ -168,7 +168,7 @@ def _evaluate_one(
 
     ex_bird = calculate_ex_bird(pred_result.rows, gold_result.rows)
     base_detail.update(
-        ex_bird=ex_bird,
+        ex=ex_bird,
         status="correct" if ex_bird else "result_mismatch",
         pred_result_count=len(pred_result.rows),
         gold_result_count=len(gold_result.rows),
@@ -289,7 +289,9 @@ def _resolve_db_config(
 
 def _default_search_path(row: Mapping[str, Any]) -> str:
     schema = db_id(row)
-    return f"{schema},public" if schema else "public"
+    if not schema or schema.lower() == "public":
+        return "public"
+    return f"{schema},public"
 
 
 def _print_metrics(details: list[dict[str, Any]], metric: str) -> None:
@@ -320,7 +322,7 @@ def _print_metrics(details: list[dict[str, Any]], metric: str) -> None:
 def _print_metric_row(name: str, rows: list[dict[str, Any]], metric: str) -> None:
     count = len(rows)
     ex_bird = (
-        sum(int(item.get("ex_bird") or 0) for item in rows) / count * 100.0
+        sum(int(item.get("ex") or 0) for item in rows) / count * 100.0
         if count
         else 0.0
     )

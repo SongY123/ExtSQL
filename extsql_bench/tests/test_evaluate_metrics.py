@@ -61,6 +61,29 @@ class EvaluationSearchPathTests(unittest.TestCase):
             'SET search_path TO "nyc_workshop", "public"',
         )
 
+    def test_public_schema_is_not_duplicated(self) -> None:
+        settings = DatabaseSettings(
+            connection_type="postgresql",
+            host="localhost",
+            port=5432,
+            database="postgis_db",
+            user="postgres",
+            password="postgres",
+            connect_timeout=10,
+            statement_timeout=60,
+        )
+
+        config = _resolve_db_config(
+            settings,
+            {"database": {"db_id": "public"}},
+        )
+
+        self.assertEqual(config.search_path, "public")
+        self.assertEqual(
+            _set_search_path_sql(config.search_path),
+            'SET search_path TO "public"',
+        )
+
 
 class BirdVesTests(unittest.TestCase):
     def test_filters_ratio_outliers_with_three_sigma_rule(self) -> None:
@@ -121,8 +144,8 @@ class EvaluationModeTests(unittest.TestCase):
             metric="ex",
         )
 
-        self.assertNotIn("ex", detail)
-        self.assertEqual(detail["ex_bird"], 1)
+        self.assertNotIn("ex_bird", detail)
+        self.assertEqual(detail["ex"], 1)
         self.assertEqual(detail["ves"], 0.0)
         self.assertEqual(execute_sql_mock.call_count, 2)
 
@@ -175,8 +198,8 @@ class EvaluationModeTests(unittest.TestCase):
             metric="all",
         )
 
-        self.assertNotIn("ex", detail)
-        self.assertEqual(detail["ex_bird"], 0)
+        self.assertNotIn("ex_bird", detail)
+        self.assertEqual(detail["ex"], 0)
         self.assertEqual(detail["ves"], 0.0)
         self.assertEqual(detail["pred_time_secs"], [])
         self.assertEqual(detail["gold_time_secs"], [])
